@@ -155,21 +155,26 @@ if ready_to_assess:
 
     # 4. Visual Explainability (Local SHAP)
     st.markdown("---")
-    st.subheader("3. Audit Trail: SHAP Local Explainability")
+    st.subheader("3. Why was this decision made?")
+    st.markdown("""
+    Our AI analyzed this application and calculated a **Probability of Default**. The chart below acts as a **'Balance Scale'** for this decision:
+    """)
     
-    st.markdown("#### How to Interpret this Graph:")
-    st.markdown("> **The Waterfall Plot unpacks the mathematical logic driving this specific applicant's score.**")
-    st.markdown("> * The baseline at the bottom ($E[f(X)]$) is the exact average model output before considering the applicant's unique details.")
-    st.markdown("> * Each horizontal bar represents one of the applicant's characteristics.")
-    st.markdown("> * 🔴 **Red Bars** push the applicant's risk of default **UP**.")
-    st.markdown("> * 🔵 **Blue Bars** push the applicant's risk of default **DOWN** (mitigating risk).")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("""
+        🔴 **Red (Risk Drivers):** These factors push the probability **UP**. 
+        *Think of these as 'Red Flags' that increase the chance of default.*
+        """)
+    with col2:
+        st.markdown("""
+        🔵 **Blue (Safety Drivers):** These factors push the probability **DOWN**. 
+        *Think of these as 'Safety Nets' that increase the chance of repayment.*
+        """)
     
-    st.markdown("##### Applicant Breakdown:")
-    if len(top_2_drivers) > 0:
-        st.markdown(f"* **Primary Risk Factor (Red):** The driver adding the most risk here is `{top_2_drivers[0][0]}` (adding **+{top_2_drivers[0][1]:.2f}** to their risk score).")
-    if top_mitigator:
-        st.markdown(f"* **Primary Mitigating Factor (Blue):** The driver saving them the most risk is `{top_mitigator[0]}` (subtracting **{top_mitigator[1]:.2f}** from their risk score).")
-    
+    st.markdown("""
+    *The **Final Result** (at the top of the chart) is where the balance settled.*
+    """)
     fig, ax = plt.subplots(figsize=(10, 5))
     shap.plots.waterfall(local_shap_vals[0], show=False)
     st.pyplot(fig)
