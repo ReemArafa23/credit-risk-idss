@@ -375,8 +375,10 @@ def _render_summary_strip(prediction_prob, risk_tier, top_features):
 
 def display_ai_recommendation(customer_data, prediction_prob, risk_tier, top_features, target_definition="Customer churn / credit default event"):
     st.subheader("🧭 AI Recommendation")
-    st.markdown("This section uses Gemini to turn the prediction into a grounded business recommendation based only on the provided inputs.")
     _render_summary_strip(prediction_prob, risk_tier, top_features)
+
+    state_key = f"ai_recommendation_{target_definition}"
+    button_key = f"generate_ai_recommendation_{target_definition}"
 
     with st.expander("Show recommendation inputs", expanded=False):
         st.json({
@@ -386,7 +388,7 @@ def display_ai_recommendation(customer_data, prediction_prob, risk_tier, top_fea
             "top_features": top_features,
         })
 
-    if st.button("✨ Generate AI Recommendation", key=f"generate_ai_recommendation_{target_definition}"):
+    if st.button("✨ Generate AI Recommendation", key=button_key):
         with st.spinner("Analysing prediction and generating business recommendation..."):
             try:
                 from google import genai
@@ -404,6 +406,7 @@ def display_ai_recommendation(customer_data, prediction_prob, risk_tier, top_fea
                 )
 
                 answer = getattr(response, "text", None) or str(response)
+                st.session_state[state_key] = answer
 
                 st.markdown("### Recommendation Output")
                 st.markdown(
@@ -419,11 +422,25 @@ def display_ai_recommendation(customer_data, prediction_prob, risk_tier, top_fea
                 st.error(f"Could not generate AI recommendation: {exc}")
                 st.info("Fallback: the recommendation component is ready, but the Gemini request failed. Check your API key, internet access, and google-genai installation.")
 
+    if state_key in st.session_state:
+        st.markdown("### Recommendation Output")
+        st.markdown(
+            f"""
+            <div style="padding: 1rem 1.1rem; border-radius: 0.8rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+            {st.session_state[state_key].replace(chr(10), '<br>')}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
 
 def display_xai_explanation(customer_data, prediction_prob, risk_tier, top_features, target_definition="Customer churn / credit default event"):
     st.subheader("✨ AI Explanation")
-    st.markdown("This component asks Gemini to convert model outputs into a plain-English business explanation, but only from the data you provide.")
+
     _render_summary_strip(prediction_prob, risk_tier, top_features)
+
+    state_key = f"ai_explanation_{target_definition}"
+    button_key = f"generate_xai_explanation_{target_definition}"
 
     with st.expander("Show input data", expanded=False):
         st.json({
@@ -433,7 +450,7 @@ def display_xai_explanation(customer_data, prediction_prob, risk_tier, top_featu
             "top_features": top_features,
         })
 
-    if st.button("✨ Generate AI Explanation", key=f"generate_xai_explanation_{target_definition}"):
+    if st.button("✨ Generate AI Explanation", key=button_key):
         with st.spinner("Analysing prediction and generating business insights..."):
             try:
                 from google import genai
@@ -453,9 +470,9 @@ def display_xai_explanation(customer_data, prediction_prob, risk_tier, top_featu
                 )
 
                 answer = getattr(response, "text", None) or str(response)
+                st.session_state[state_key] = answer
 
                 st.markdown("### AI Explanation")
-                st.container(border=True)
                 st.markdown(
                     f"""
                     <div style="padding: 1rem 1.1rem; border-radius: 0.8rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
@@ -469,6 +486,17 @@ def display_xai_explanation(customer_data, prediction_prob, risk_tier, top_featu
             except Exception as exc:
                 st.error(f"Could not generate AI explanation: {exc}")
                 st.info("Fallback: the explanation component is ready, but the Gemini request failed. Check your API key, internet access, and google-genai installation.")
+
+    if state_key in st.session_state:
+        st.markdown("### AI Explanation")
+        st.markdown(
+            f"""
+            <div style="padding: 1rem 1.1rem; border-radius: 0.8rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+            {st.session_state[state_key].replace(chr(10), '<br>')}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def build_credit_risk_xai_payload(applicant_df, prediction_prob, feature_contributions):
