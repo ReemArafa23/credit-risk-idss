@@ -60,13 +60,26 @@ def show_portfolio_insights():
         # Ensure 'loan_amnt' exists in your CSV, otherwise use the column name from your features
         st.metric("Total Loan Volume ($)", f"${df[df['Approved']]['loan_amnt'].sum():,.0f}")
 
-    # 3. Risk-Return Matrix
+    # 2. Risk Metrics
+    df['prob_default'] = model.predict_proba(df[features])[:, 1]
+    
+    # 3. Safe Plotly Scatter
     st.markdown("### 🎯 Risk-Return Portfolio Matrix")
-    fig = px.scatter(df, x='loan_int_rate', y='prob_default', 
-                     size='loan_amnt', color='Risk_Tier',
-                     hover_data=['person_income'],
-                     title="Profitability (Interest Rate) vs Risk (Probability of Default)")
-    st.plotly_chart(fig, use_container_width=True)
+    
+    try:
+        fig = px.scatter(
+            df, 
+            x='loan_int_rate', 
+            y='prob_default', 
+            size='loan_amnt', 
+            color='Risk_Tier',
+            title="Profitability vs Risk",
+            labels={'loan_int_rate': 'Interest Rate', 'prob_default': 'Default Probability'}
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"Could not render chart: {e}")
+        st.write("Columns in your data:", df.columns.tolist())
     
     # 4. Opportunity Leakage (The "Why are we losing revenue?" section)
     st.markdown("---")
