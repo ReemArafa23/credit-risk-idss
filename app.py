@@ -221,6 +221,351 @@ def show_portfolio_insights():
             st.error("Required demographic features ('person_emp_length', 'person_income') are missing from the dataset.")
 
 
+def _format_value_for_prompt(value):
+    if isinstance(value, (np.integer, int)):
+        return f"{int(value):,}"
+    if isinstance(value, (np.floating, float)):
+        return f"{float(value):.4f}" if abs(float(value)) < 100 else f"{float(value):,.2f}"
+    if isinstance(value, dict):
+        return ", ".join(f"{k}: {v}" for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(item) for item in value)
+    return str(value)
+
+
+def _build_xai_prompt(customer_data, prediction_prob, risk_tier, top_features, target_definition):
+    customer_profile_text = "\n".join(f"- {key}: {_format_value_for_prompt(value)}" for key, value in customer_data.items())
+    driver_lines = []
+
+    for feature in top_features:
+        if isinstance(feature, dict):
+            name = feature.get("feature", feature.get("name", "Unknown"))
+            value = feature.get("value", feature.get("feature_value", "N/A"))
+            impact = feature.get("impact", feature.get("direction", feature.get("contribution", "N/A")))
+            driver_lines.append(f"- {name}: value={_format_value_for_prompt(value)}, impact={_format_value_for_prompt(impact)}")
+        elif isinstance(feature, (list, tuple)) and len(feature) >= 3:
+            driver_lines.append(f"- {feature[0]}: value={_format_value_for_prompt(feature[1])}, impact={_format_value_for_prompt(feature[2])}")
+        else:
+            driver_lines.append(f"- {_format_value_for_prompt(feature)}")
+
+    driver_text = "\n".join(driver_lines) if driver_lines else "- No top features supplied."
+
+    return f"""You are an XAI (Explainable AI) engine for a Predictive Business System. Your job is to translate mathematical model outputs into clear, actionable business intelligence.
+
+PREDICTION DATA:
+- Probability of event: {prediction_prob:.2%} ({risk_tier} Risk)
+- Definition: {target_definition}
+
+CUSTOMER/APPLICANT PROFILE:
+{customer_profile_text}
+
+TOP MODEL DRIVERS (Mathematical feature contributions):
+{driver_text}
+
+STRICT INSTRUCTIONS:
+Based ONLY on the data provided above, write a business-focused explanation using EXACTLY these four section headings (each preceded by ###):
+
+### Why This Score
+Explain in plain English why this profile received this specific probability. Reference 2-3 explicit data points from their profile. Do not invent data.
+
+### Key Risk Drivers
+Translate the 'Top Model Drivers' into business terms. Explain what is pushing the risk up or down and why it matters.
+
+### Business Impact
+Assess what this specific prediction means for the business operations or bottom line.
+
+### Recommended Actions
+Provide exactly 3 specific, highly personalised actions the business should take for this profile to mitigate risk or retain value.
+
+Constraints:
+- Use only the data above.
+- Do not mention that you are an AI model.
+- Do not add extra sections.
+- Do not use bullet points unless they are inside the requested sections.
+- Keep the tone professional, plain-English, and business-focused."""
+
+
+def _get_google_api_key():
+    try:
+        return st.secrets["GOOGLE_API_KEY"]
+    except Exception:
+        try:
+            return st.secrets["google_api_key"]
+        except Exception:
+            return st.session_state.get("GOOGLE_API_KEY")
+
+
+def _build_recommendation_prompt(customer_data, prediction_prob, risk_tier, top_features, target_definition):
+    customer_profile_text = "\n".join(f"- {key}: {_format_value_for_prompt(value)}" for key, value in customer_data.items())
+    driver_lines = []
+
+    for feature in top_features:
+        if isinstance(feature, dict):
+            name = feature.get("feature", feature.get("name", "Unknown"))
+            value = feature.get("value", feature.get("feature_value", "N/A"))
+            impact = feature.get("impact", feature.get("direction", feature.get("contribution", "N/A")))
+            driver_lines.append(f"- {name}: value={_format_value_for_prompt(value)}, impact={_format_value_for_prompt(impact)}")
+        elif isinstance(feature, (list, tuple)) and len(feature) >= 3:
+            driver_lines.append(f"- {feature[0]}: value={_format_value_for_prompt(feature[1])}, impact={_format_value_for_prompt(feature[2])}")
+        else:
+            driver_lines.append(f"- {_format_value_for_prompt(feature)}")
+
+    driver_text = "\n".join(driver_lines) if driver_lines else "- No top features supplied."
+
+    return f"""You are an expert credit risk business analyst for a Predictive Business System.
+
+PREDICTION DATA:
+- Probability of event: {prediction_prob:.2%} ({risk_tier} Risk)
+- Definition: {target_definition}
+
+CUSTOMER/APPLICANT PROFILE:
+{customer_profile_text}
+
+TOP MODEL DRIVERS (Mathematical feature contributions):
+{driver_text}
+
+STRICT INSTRUCTIONS:
+Based ONLY on the data above, produce a concise, business-focused recommendation.
+
+Use exactly these three sections:
+
+### Risk Interpretation
+Explain in one short paragraph what the score means for this applicant.
+
+### Recommendation
+State the primary business decision or next step.
+
+### Actions
+Provide exactly 3 concrete actions the business should take right now.
+
+Constraints:
+- Do not invent data.
+- Do not mention that you are an AI model.
+- Keep it specific to the applicant.
+- Keep the tone professional and plain-English."""
+
+
+def _render_summary_strip(prediction_prob, risk_tier, top_features):
+    top_feature_name = "N/A"
+    if top_features:
+        first = top_features[0]
+        if isinstance(first, dict):
+            top_feature_name = first.get("feature", first.get("name", "N/A"))
+        elif isinstance(first, (list, tuple)):
+            top_feature_name = first[0] if len(first) > 0 else "N/A"
+        else:
+            top_feature_name = str(first)
+
+    s1, s2, s3 = st.columns(3)
+    s1.metric("Probability", f"{prediction_prob:.2%}")
+    s2.metric("Risk Tier", risk_tier)
+    s3.metric("Top Driver", top_feature_name)
+
+
+def display_ai_recommendation(customer_data, prediction_prob, risk_tier, top_features, target_definition="Customer churn / credit default event"):
+    st.subheader("🧭 AI Recommendation")
+    st.markdown("This section uses Gemini to turn the prediction into a grounded business recommendation based only on the provided inputs.")
+    _render_summary_strip(prediction_prob, risk_tier, top_features)
+
+    with st.expander("Show recommendation inputs", expanded=False):
+        st.json({
+            "customer_data": customer_data,
+            "prediction_prob": prediction_prob,
+            "risk_tier": risk_tier,
+            "top_features": top_features,
+        })
+
+    if st.button("✨ Generate AI Recommendation", key=f"generate_ai_recommendation_{target_definition}"):
+        with st.spinner("Analysing prediction and generating business recommendation..."):
+            try:
+                from google import genai
+
+                api_key = _get_google_api_key()
+                if not api_key:
+                    st.error("Google API key not found. Add GOOGLE_API_KEY to Streamlit secrets or environment variables.")
+                    return
+
+                prompt = _build_recommendation_prompt(customer_data, prediction_prob, risk_tier, top_features, target_definition)
+                client = genai.Client(api_key=api_key)
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt,
+                )
+
+                answer = getattr(response, "text", None) or str(response)
+
+                st.markdown("### Recommendation Output")
+                st.markdown(
+                    f"""
+                    <div style="padding: 1rem 1.1rem; border-radius: 0.8rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                    {answer.replace(chr(10), '<br>')}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            except Exception as exc:
+                st.error(f"Could not generate AI recommendation: {exc}")
+                st.info("Fallback: the recommendation component is ready, but the Gemini request failed. Check your API key, internet access, and google-genai installation.")
+
+
+def display_xai_explanation(customer_data, prediction_prob, risk_tier, top_features, target_definition="Customer churn / credit default event"):
+    st.subheader("✨ AI Explanation")
+    st.markdown("This component asks Gemini to convert model outputs into a plain-English business explanation, but only from the data you provide.")
+    _render_summary_strip(prediction_prob, risk_tier, top_features)
+
+    with st.expander("Show input data", expanded=False):
+        st.json({
+            "customer_data": customer_data,
+            "prediction_prob": prediction_prob,
+            "risk_tier": risk_tier,
+            "top_features": top_features,
+        })
+
+    if st.button("✨ Generate AI Explanation", key=f"generate_xai_explanation_{target_definition}"):
+        with st.spinner("Analysing prediction and generating business insights..."):
+            try:
+                from google import genai
+
+                api_key = _get_google_api_key()
+
+                if not api_key:
+                    st.error("Google API key not found. Add GOOGLE_API_KEY to Streamlit secrets or environment variables.")
+                    return
+
+                prompt = _build_xai_prompt(customer_data, prediction_prob, risk_tier, top_features, target_definition)
+
+                client = genai.Client(api_key=api_key)
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt,
+                )
+
+                answer = getattr(response, "text", None) or str(response)
+
+                st.markdown("### AI Explanation")
+                st.container(border=True)
+                st.markdown(
+                    f"""
+                    <div style="padding: 1rem 1.1rem; border-radius: 0.8rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                    {answer.replace(chr(10), '<br>')}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                st.info("The response above is constrained to the provided customer profile, prediction score, and top model drivers.")
+
+            except Exception as exc:
+                st.error(f"Could not generate AI explanation: {exc}")
+                st.info("Fallback: the explanation component is ready, but the Gemini request failed. Check your API key, internet access, and google-genai installation.")
+
+
+def run_xai_demo():
+    st.divider()
+    st.header("Demo: AI Explanation Component")
+    st.caption("This demo uses synthetic churn-style inputs so you can test the UI immediately.")
+
+    demo_customer_data = {
+        "customer_id": "CUST-10421",
+        "age": 38,
+        "monthly_charges": 89.50,
+        "tenure_months": 7,
+        "contract_type": "Month-to-month",
+        "support_calls_last_90d": 6,
+        "payment_method": "Electronic check",
+        "region": "West",
+        "account_balance": 143.22,
+    }
+
+    demo_top_features = [
+        {"feature": "support_calls_last_90d", "value": 6, "impact": "increases risk"},
+        {"feature": "tenure_months", "value": 7, "impact": "increases risk"},
+        {"feature": "monthly_charges", "value": 89.50, "impact": "increases risk"},
+        {"feature": "account_balance", "value": 143.22, "impact": "decreases risk"},
+    ]
+
+    display_xai_explanation(
+        customer_data=demo_customer_data,
+        prediction_prob=0.846,
+        risk_tier="High",
+        top_features=demo_top_features,
+        target_definition="Probability that this customer will churn in the next 30 days",
+    )
+
+
+def build_credit_risk_xai_payload(applicant_df, prediction_prob, feature_contributions):
+    top_positive = sorted(feature_contributions.items(), key=lambda item: item[1], reverse=True)
+    top_negative = sorted(feature_contributions.items(), key=lambda item: item[1])
+
+    top_features = []
+    for feature_name, contribution in top_positive[:3]:
+        top_features.append({
+            "feature": feature_name,
+            "value": applicant_df.iloc[0].get(feature_name, "N/A"),
+            "impact": f"increases risk by {contribution:.4f}",
+        })
+
+    if top_negative:
+        feature_name, contribution = top_negative[0]
+        top_features.append({
+            "feature": feature_name,
+            "value": applicant_df.iloc[0].get(feature_name, "N/A"),
+            "impact": f"decreases risk by {abs(contribution):.4f}",
+        })
+
+    customer_data = applicant_df.iloc[0].to_dict()
+    return customer_data, top_features
+
+
+def render_interactive_shap_waterfall(feature_contributions, base_value, title="Interactive SHAP Waterfall"):
+    ranked_items = sorted(feature_contributions.items(), key=lambda item: abs(item[1]), reverse=True)
+    top_items = ranked_items[:10]
+    other_sum = sum(value for _, value in ranked_items[10:]) if len(ranked_items) > 10 else 0.0
+
+    labels = [name for name, _ in top_items]
+    values = [value for _, value in top_items]
+
+    if abs(other_sum) > 1e-9:
+        labels.append("Other features")
+        values.append(other_sum)
+
+    labels = ["Baseline"] + labels + ["Final"]
+    measures = ["absolute"] + ["relative"] * len(values) + ["total"]
+    y_values = [base_value] + values + [None]
+
+    fig = go.Figure(
+        go.Waterfall(
+            name="SHAP Contribution",
+            orientation="v",
+            measure=measures,
+            x=labels,
+            y=y_values,
+            connector={"line": {"color": "rgba(200,200,200,0.35)", "width": 1.2}},
+            increasing={"marker": {"color": "#ff4d4d"}},
+            decreasing={"marker": {"color": "#2b6cb0"}},
+            totals={"marker": {"color": "#f5f5f5", "line": {"color": "#cfcfcf", "width": 1}}},
+        )
+    )
+
+    fig.update_layout(
+        title=title,
+        template="plotly_dark",
+        height=560,
+        margin=dict(l=30, r=30, t=80, b=45),
+        xaxis_title="Model Drivers",
+        yaxis_title="Contribution to Model Output",
+        showlegend=False,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(size=13),
+    )
+
+    fig.update_xaxes(tickangle=-25, automargin=True)
+    fig.update_yaxes(gridcolor="rgba(255,255,255,0.08)")
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
 page = st.sidebar.selectbox("Dashboard View", ["Active Decision Engine", "Portfolio Insights"])
 
 if page == "Active Decision Engine":
@@ -338,52 +683,86 @@ if page == "Active Decision Engine":
 
         st.markdown("---")
         st.subheader("2. Automated Business Recommendation")
-        
-       
-        if len(top_2_drivers) == 0:
-            st.success("PROCEED: No significant dynamic risk drivers identified. Approve under standard protocol.")
-        else:
-            top_driver = top_2_drivers[0][0].lower()
-            
-            if 'loan_to_income' in top_driver or 'percent_income' in top_driver:
-                st.error("RECOMMENDATION: Counter-offer with a lower principal loan amount to bring the LTI ratio under 35%.")
-            elif 'int_rate' in top_driver:
-                st.warning("RECOMMENDATION: Reject current unsecured terms, but offer a secured loan option to lower the interest burden.")
-            elif 'person_income' in top_driver:
-                st.error("RECOMMENDATION: Income is flagged as insufficient for this loan structure. Request proof of additional income or a co-signer.")
-            elif 'home_ownership' in top_driver:
-                st.warning("RECOMMENDATION: Housing instability flagged. Require a larger down payment or collateral to mitigate flight risk.")
-            elif 'cred_hist_length' in top_driver:
-                st.warning("RECOMMENDATION: Short credit history driving risk. Require secondary credit references (e.g., utility bills).")
-            elif 'emp_length' in top_driver:
-                st.warning("RECOMMENDATION: Short or unstable employment history flagged. Require most recent pay stubs and employer verification.")
-            else:
-                st.error(f"RECOMMENDATION: Elevated risk stemming from `{top_2_drivers[0][0]}`. Escalate to human underwriter for manual review.")
+        recommendation_customer_data, recommendation_top_features = build_credit_risk_xai_payload(applicant_df, prob_default, feature_contributions)
+        display_ai_recommendation(
+            customer_data=recommendation_customer_data,
+            prediction_prob=prob_default,
+            risk_tier=tier_text,
+            top_features=recommendation_top_features,
+            target_definition="Probability that this applicant will default on the loan",
+        )
 
-        # 4. Visual Explainability (Local SHAP)
+        # 4. Visual Explainability (Interactive SHAP)
         st.markdown("---")
         st.subheader("3. Why was this decision made?")
         st.markdown("""
-        Our AI analyzed this application and calculated a **Probability of Default**. The chart below acts as a **'Balance Scale'** for this decision:
+        Our AI analyzed this application and calculated a **Probability of Default**. The interactive waterfall below shows how the model moved from its baseline view to this specific decision.
         """)
 
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("""
-            🔴 **Red (Risk Drivers):** These factors push the probability **UP**. 
-            *Think of these as 'Red Flags' that increase the chance of default.*
+            🔴 **Red bars** push the prediction **UP** toward higher risk.
             """)
         with col2:
             st.markdown("""
-            🔵 **Blue (Safety Drivers):** These factors push the probability **DOWN**. 
-            *Think of these as 'Safety Nets' that increase the chance of repayment.*
+            🔵 **Blue bars** push the prediction **DOWN** toward lower risk.
             """)
 
-        st.markdown("""
-        *The **Final Result** (at the top of the chart) is where the balance settled.*
-        """)
-        fig, ax = plt.subplots(figsize=(10, 5))
-        shap.plots.waterfall(local_shap_vals[0], show=False)
-        st.pyplot(fig)
+        st.markdown("The chart is interactive: hover to inspect each driver, zoom the view, and compare the strongest positive and negative factors.")
+        plot_col, table_col = st.columns([1.6, 1])
+        with plot_col:
+            render_interactive_shap_waterfall(
+                feature_contributions=filtered_contributions,
+                base_value=float(local_shap_vals.base_values[0]) if np.ndim(local_shap_vals.base_values) else float(local_shap_vals.base_values),
+                title="Interactive SHAP Waterfall: Applicant Risk Drivers",
+            )
+        with table_col:
+            st.markdown("##### Ranked Drivers")
+            ranked_driver_rows = []
+            for feature_name, contribution in sorted(filtered_contributions.items(), key=lambda item: abs(item[1]), reverse=True)[:8]:
+                ranked_driver_rows.append({
+                    "Feature": feature_name,
+                    "Impact": "Up" if contribution >= 0 else "Down",
+                    "SHAP": round(float(contribution), 4),
+                })
+
+            ranked_driver_df = pd.DataFrame(ranked_driver_rows)
+            st.dataframe(
+                ranked_driver_df,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.markdown("##### Legend")
+            st.markdown(
+                """
+                <div style="padding: 0.8rem 0.9rem; border-radius: 0.75rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                <div><span style="color:#ff4d4d; font-weight:700;">●</span> Red = pushes risk up</div>
+                <div><span style="color:#2b6cb0; font-weight:700;">●</span> Blue = pushes risk down</div>
+                <div><span style="color:#f5f5f5; font-weight:700;">●</span> Baseline = model starting point</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        st.divider()
+        st.subheader("4. AI Business Explanation")
+        st.caption("This explanation is based on the applicant’s actual assessed values and the strongest positive/negative SHAP drivers.")
+        real_customer_data, real_top_features = build_credit_risk_xai_payload(applicant_df, prob_default, feature_contributions)
+        display_xai_explanation(
+            customer_data=real_customer_data,
+            prediction_prob=prob_default,
+            risk_tier=tier_text,
+            top_features=real_top_features,
+            target_definition="Probability that this applicant will default on the loan",
+        )
+
 else:
     show_portfolio_insights()
+
+if page == "Active Decision Engine":
+    st.divider()
+    st.subheader("Independent XAI Demo")
+    st.caption("Use this section to test the Gemini-powered explanation component without running a loan assessment first.")
+    run_xai_demo()

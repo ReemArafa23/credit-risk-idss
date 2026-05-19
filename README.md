@@ -1,130 +1,336 @@
 # 🏦 Intelligent Decision Support System (IDSS) for Credit Risk
 
-Welcome to the **Intelligent Decision Support System (IDSS)**. This repository houses an end-to-end, enterprise-grade Machine Learning solution designed to transform how financial institutions evaluate, understand, and mitigate credit risk.
+This project is a full credit-risk decision intelligence stack built to help lenders, underwriters, and risk managers move from raw model scores to explainable business decisions.
+
+It combines:
+- predictive modeling with XGBoost,
+- explainability with SHAP,
+- Gemini-powered business narration,
+- and a Streamlit dashboard that supports both applicant-level decisions and portfolio-level strategy.
 
 ---
 
-## 🛑 1. Problem Statement
-The modern banking system faces a critical bottleneck: the tradeoff between **predictive accuracy** and **regulatory transparency**. 
-* Advanced Machine Learning models (like deep neural networks and ensemble trees) are highly accurate at predicting loan defaults, but they act as "Black Boxes". 
-* Due to strict regulations (e.g., Fair Lending Acts, Equal Credit Opportunity Act), banks cannot legally deploy models that they cannot interpret. If a loan is denied, the bank must be able to explicitly explain *why* it was denied to the applicant and regulators.
-* Because of this constraint, many banks are stuck using outdated, highly manual, or overly simplistic logistic regression scoring systems—costing them millions in potential revenue and exposing them to systemic defaults.
+## 1. Problem Statement
 
-## 💡 2. Business Value
-This project bridges the gap between mathematically advanced AI and human-readable business logic. 
-* **Revenue Recovery:** By safely deploying a high-performance **XGBoost** model paired with an explainability engine, the bank can identify profitable, low-risk loans that older scorecard models would falsely reject.
-* **Loss Mitigation:** The IDSS strictly identifies "High Risk" candidates by cross-referencing interacting variables (e.g., high income but short employment combined with a high loan-to-income ratio) that humans might miss.
-* **Operational Efficiency:** It reduces the time human underwriters spend reviewing clear-cut cases. The IDSS auto-approves safe profiles and intercepts risky ones with dynamic, data-driven counter-offer recommendations.
+Banks need to approve profitable loans quickly, but they also need to avoid costly defaults and comply with lending regulations. In practice, that means the institution needs two things at the same time:
 
-## 🚀 3. What This Adds to the Banking System
-This project provides a live, interactive **Active Decision Engine**. It does not just output a "Probability of Default" number. Instead, it:
-1. **Unpacks the Black Box:** Uses SHAP (SHapley Additive exPlanations) to legally justify every single approval and denial.
-2. **Automates Policy:** Automatically reads the AI's logic to suggest human interventions (e.g., *"Counter-offer with a lower principal because the Loan-to-Income ratio is causing the risk"*).
-3. **Monitors Systemic Risk:** Provides the C-Suite with a real-time Portfolio Dashboard to simulate credit-tightening policies, optimize profit thresholds, and visualize leakage.
+- strong prediction accuracy,
+- and a clear explanation of why a decision was made.
 
----
+Most high-performing ML models are not naturally explainable. That creates a business problem:
 
-## 🏗️ Detailed Project Architecture & The 5 Phases
+- a loan officer may not be able to justify a rejection,
+- a risk team may not know which portfolio segments are driving losses,
+- and executives may not know which policy thresholds actually maximize revenue.
 
-Unlike standard data science tutorials, this project simulates a complete enterprise MLOps lifecycle divided into 5 distinct phases:
+This IDSS project solves that gap by turning model predictions into actionable business intelligence.
 
-### Phase 1: Exploratory Data Analysis (EDA) & Data Integrity
-* **Objective:** Understand the raw financial dataset, uncover statistical distributions, and identify data corruption.
-* **Processes Executed:**
-  * Conducted deep univariate and bivariate analysis on demographics and historical loan performances.
-  * Identified anomalies and outliers (e.g., applicants with impossible age bounds or hyper-inflated incomes).
-  * Visualized the class imbalance between "Performing" (Paid) and "Non-Performing" (Defaulted) loans.
+## 2. Business Value
 
-### Phase 2: Preprocessing & Feature Engineering
-* **Objective:** Transform raw data into a mathematically optimized matrix for the XGBoost algorithm.
-* **Processes Executed:**
-  * **Missing Value Imputation:** Handled missing employment lengths and interest rates safely to preserve data distributions.
-  * **Feature Engineering:** Derived crucial financial calculations that heavily dictate risk. E.g., dynamically calculating the `loan_to_income_ratio` (Leverage) and `emp_length_to_age_ratio`.
-  * **Categorical Encoding:** Applied One-Hot Encoding (OHE) to translate text strings (like `Home_Ownership = RENT`) into binary vectors.
-  * **Data Splitting:** Segregated the dataset into Train/Test subsets to prevent data leakage during model evaluation.
+The system was designed to create value across three levels of the banking workflow.
 
-### Phase 3: Predictive Modeling & Optimization
-* **Objective:** Train a robust, non-linear machine learning model capable of capturing complex interacting risk factors.
-* **Processes Executed:**
-  * **Algorithm Selection:** Selected **XGBoost** (Extreme Gradient Boosting) for its peerless performance on tabular financial data.
-  * **Hyperparameter Tuning:** Optimized tree depth, learning rate, and class weighting (`scale_pos_weight`) to force the algorithm to care about identifying minority default cases.
-  * **Model Serialization:** Serialized the optimized model into `best_credit_risk_model.joblib` to detach it from the training environment and prep it for the Streamlit UI.
-  * *(Note: We actively debugged a severe deployment issue involving Streamlit Cloud parsing errors (the `[5E-1]` base_score bug), resolving it by strictly pinning `xgboost==1.7.6` in our environment).* 
+### For Underwriters
+- explains the reason behind an approval or rejection,
+- suggests next best actions,
+- and supports faster manual review for borderline applicants.
 
-### Phase 4: Machine Learning Explainability (XAI) & Segmentation
-* **Objective:** Break open the XGBoost "Black Box" using SHAP (SHapley Additive exPlanations) to extract business logic.
-* **Processes Executed:**
-  * **Global SHAP Analysis:** Extracted overall feature importance to prove that `loan_to_income_ratio` and `loan_int_rate` were the dominant systemic drivers of portfolio default.
-  * **Customer Persona Profiling:** Clustered the applicants based on their predicted probabilities into High, Medium, and Low risk tiers. Uncovered clear personas such as "The Over-leveraged Renter" and "The Stable Homeowner".
-  * **Local SHAP Generation:** Built the code to extract individual decision waterfalls, simulating the localized output needed for Fair Lending Act compliance.
+### For Risk Managers
+- simulates approval thresholds in real time,
+- shows where good applications are being lost,
+- and helps identify structural portfolio risk patterns.
 
-### Phase 5: The Streamlit Prototype (Active Decision Engine)
-* **Objective:** Deploy the model into an intuitive UI/UX for both Underwriters and C-Suite Risk Managers.
-* **Processes Executed:**
-  * **Dynamic Business Rules Engine:** Built a logic flow that reads individual SHAP scores and dynamically suggests specific counter-offers (e.g., if income is the top SHAP risk driver, the UI automatically recommends requesting a co-signer).
-  * **Bias Mitigation:** Actively filtered out static/biased features (like `loan_grade`) from the dynamic recommendation system to prevent the engine from repeating useless warnings.
-  * **JSON Batch Assessment:** Constructed a backend file-uploader allowing risk analysts to evaluate structured JSON applicant data rather than typing inputs manually.
+### For Executives
+- shows how risk and return interact,
+- identifies the threshold that maximizes expected profit,
+- and makes the portfolio easier to govern with data-backed policy decisions.
+
+The result is a system that improves decision speed, reduces blind spots, and makes the lending process more explainable and more strategic.
+
+## 3. What This Project Adds to the Banking System
+
+This is not just a prediction model. It is an end-to-end decision support layer for credit risk.
+
+It adds five major capabilities:
+
+1. **Transparent decisions** through SHAP-based explainability.
+2. **Business-readable recommendations** through Gemini-generated narrative output.
+3. **Interactive applicant assessment** through Streamlit inputs and JSON uploads.
+4. **Portfolio strategy analysis** through risk/return, funnel, profit, and heatmap visuals.
+5. **A reusable IDSS workflow** that can be adapted for churn, default, fraud, or other binary risk problems.
 
 ---
 
-## 🖥️ The Streamlit Application Visuals
+## 4. End-to-End Project Workflow
 
-### A. Active Decision Engine (For Underwriters)
-The Underwriter view processes individuals (via manual slider entry or JSON) and utilizes the **Dynamic Rule Engine** to reject/approve with clear, SHAP-derived justifications.
+The project was built in a phased workflow so each stage could be validated before moving to the next.
 
-![Active Decision Engine](images/active_decision_engine.jpg)
-*Figure: The individual Underwriter View showing an extreme risk (85.47% Probability of Default) and a tailored policy recommendation.*
+### Phase 1: Exploratory Data Analysis
+Purpose: understand the raw structure of the dataset before modeling.
 
-![SHAP Local Explainability](images/shap_waterfall.jpg)
-*Figure: The SHAP Waterfall "Balance Scale" plot. The red bars prove why the applicant's probability was driven up, satisfying regulatory transparency laws.*
+What was done:
+- inspected the target distribution,
+- checked for missing values,
+- reviewed class imbalance,
+- explored numerical distributions,
+- and examined relationships between major credit features.
 
-### B. Portfolio Insights & Strategic Dashboard (For Executives)
-A macro-level intelligence suite utilizing `Plotly` to help Risk Committees optimize bank-wide policies.
+This stage helped identify the dominant signals in the data and determine which features would likely matter most to the model.
 
-![Portfolio Insights Overview](images/portfolio_overview.jpg)
-*Figure: Top-level KPIs tracking total exposure ($63M) and average portfolio-wide default probabilities across the entire tested dataset.*
+### Phase 2: Preprocessing and Feature Engineering
+Purpose: convert raw input into a training-ready format.
 
-#### 1. The Risk vs. Return Scatter Matrix
-Plots the foundational law of finance: Risk vs. expected Return. Helps executives identify the "Gold Mine" (high interest, low risk) vs. the "Danger Zone".
-![Risk vs Return](images/risk_vs_return.jpg)
+What was done:
+- handled missing values,
+- normalized or scaled numeric fields where needed,
+- created engineered ratios such as `loan_to_income_ratio`,
+- encoded categorical variables with one-hot encoding,
+- and aligned the final feature matrix with the model input schema.
 
-#### 2. The Dynamic Approval Funnel & Leakage Tracker
-An interactive simulator. Risk managers can drag the "acceptable risk" threshold (e.g., 30%) and instantly see how many millions of dollars the bank will approve or reject. The "Leakage" chart reveals the systemic reasons *why* good revenue was lost.
-![Dynamic Funnel](images/dynamic_funnel.jpg)
+This phase was essential because the model expects stable numeric inputs, not raw text categories.
 
-#### 3. Expected Portfolio Profitability Curve
-Calculates simulated Expected Value (EV) curves to prove to the Board precisely which risk threshold (e.g., 10%) mathematically maximizes bottom-line portfolio revenue.
-![Profitability Curve](images/profit_optimization.jpg)
+### Phase 3: Predictive Modeling
+Purpose: train a high-performing model for default prediction.
 
-#### 4. Demographic Risk Exposure Heatmap
-Exposes hidden systemic risks, such as highly paid applicants who still exhibit extreme default probabilities due to structural factors like poor credit history or short employment lengths.
-![Demographic Exposure Heatmap](images/demographic_heatmap.jpg)
+What was done:
+- selected XGBoost as the main learner,
+- tuned the model to better detect minority default cases,
+- evaluated model behavior on the holdout set,
+- and serialized the trained model as `best_credit_risk_model.joblib`.
+
+We also resolved a deployment issue caused by the newer XGBoost base score format by pinning the environment to `xgboost==1.7.6`.
+
+### Phase 4: Explainability and Segmentation
+Purpose: translate model outputs into business logic.
+
+What was done:
+- used global SHAP to identify the strongest overall drivers,
+- used local SHAP to explain single-applicant decisions,
+- segmented customers into low, medium, and high risk groups,
+- and converted technical model output into plain-English reasoning.
+
+### Phase 5: Streamlit IDSS Prototype
+Purpose: deliver the model through a usable business interface.
+
+What was done:
+- built an underwriter-facing decision screen,
+- enabled manual input and JSON upload,
+- added Gemini-backed recommendation and explanation modules,
+- and created portfolio dashboards for executive monitoring.
 
 ---
 
-## ⚙️ Setup & Installation
+## 5. Model and Decision Logic
 
-To run the IDSS locally on your machine:
+The app calculates a default probability using the trained XGBoost model and then uses that score to drive the user experience.
 
-1. **Clone the repository:**
-   ```bash
-   git clone <your-repo-link>
-   cd IDSS-Credit-Risk
-   ```
+### Applicant-Level Logic
+- the applicant data is converted into model-ready features,
+- a default probability is generated,
+- the applicant is assigned a risk tier,
+- SHAP values identify the strongest positive and negative contributors,
+- Gemini converts those contributors into a grounded recommendation and explanation.
 
-2. **Install the required packages:**
-   *(⚠️ CRITICAL: Ensure you are using `xgboost==1.7.6` and `shap==0.44.0`. Newer versions of XGBoost break the local Streamlit environment due to base_score array formatting `[5E-1]`)*
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Portfolio-Level Logic
+- the entire test portfolio is scored,
+- approvals and rejections are simulated at different thresholds,
+- expected profitability is estimated,
+- and portfolio vulnerabilities are shown through interactive visual analysis.
 
-3. **Run the Streamlit Dashboard:**
-   ```bash
-   streamlit run app.py
-   ```
+The static loan-grade warning was intentionally removed from the recommendation logic because it is not a user-entered input. That keeps recommendations focused on the applicant data that actually exists in the UI.
 
-## 📜 Technology Stack
-* **Machine Learning:** `scikit-learn`, `xgboost` 1.7.6
-* **Explainable AI (XAI):** `shap` 0.44.0
-* **Data Manipulation:** `pandas`, `numpy`
-* **Dashboard & UI:** `streamlit`, `plotly`, `matplotlib`
+---
+
+## 6. Streamlit Application Overview
+
+The app is organized into two main views.
+
+### A. Active Decision Engine
+This view is designed for underwriters and analysts working on one applicant at a time.
+
+It supports:
+- manual form entry,
+- JSON applicant uploads,
+- probability of default scoring,
+- Gemini-based recommendation generation,
+- Gemini-based explanation generation,
+- and an interactive SHAP waterfall visualization.
+
+### B. Portfolio Insights Dashboard
+This view is designed for managers and executives who need a portfolio-wide picture.
+
+It includes:
+- a risk vs. return scatter plot,
+- a dynamic approval funnel,
+- a rejection leakage analysis,
+- an expected profitability curve,
+- and a demographic risk exposure heatmap.
+
+---
+
+## 7. Visuals and Outputs
+
+The following screenshots live in the `images/` folder.
+
+### Active Decision Engine
+
+![Active Decision Engine](images/active_decision_engine.png)
+
+This screen shows the applicant-level workflow, including the default probability, risk tier, Gemini recommendation, and the explanation section.
+
+### Interactive SHAP Waterfall
+
+![Interactive SHAP Waterfall](images/shap_waterfall.png)
+
+This chart shows the strongest positive and negative model contributions in an interactive dashboard format.
+
+### Portfolio Insights Overview
+
+![Portfolio Insights Overview](images/portfolio_overview.png)
+
+This screen summarizes portfolio size, exposure, and average default risk.
+
+### Risk vs. Return Scatter Plot
+
+![Risk vs Return](images/risk_vs_return.png)
+
+This chart helps identify the profitable low-risk zone and the dangerous high-risk zone.
+
+### Dynamic Approval Funnel
+
+![Dynamic Funnel](images/dynamic_funnel.png)
+
+This chart shows how changing the approval threshold changes the distribution of approved and rejected loan volume.
+
+### Expected Portfolio Profitability Curve
+
+![Profitability Curve](images/profit_optimization.png)
+
+This chart identifies the threshold where expected profit is highest.
+
+### Demographic Risk Exposure Heatmap
+
+![Demographic Exposure Heatmap](images/demographic_heatmap.png)
+
+This chart shows which income and employment segments produce the highest average default risk.
+
+---
+
+## 8. Explanation Layer Powered by Gemini
+
+The Streamlit app now includes an AI explanation and recommendation layer that uses the `google.genai` SDK and Gemini 2.5 Flash.
+
+It performs two tasks:
+
+### AI Recommendation
+Generates a short business recommendation based on:
+- the applicant profile,
+- the model probability,
+- the risk tier,
+- and the top SHAP drivers.
+
+### AI Explanation
+Generates a deeper narrative that answers:
+- why the score is what it is,
+- what the key risk drivers mean,
+- what the business impact is,
+- and what actions should be taken.
+
+Both prompts are constrained to use only the supplied data, which helps reduce hallucination and keeps the output aligned to the model result.
+
+---
+
+## 9. Technical Stack
+
+- **Machine Learning:** XGBoost, scikit-learn
+- **Explainable AI:** SHAP
+- **AI Text Generation:** Google Gemini via `google.genai`
+- **Dashboard:** Streamlit
+- **Visual Analytics:** Plotly, Matplotlib
+- **Data Handling:** Pandas, NumPy
+- **Model Artifacts:** Joblib
+
+---
+
+## 10. Repository Structure
+
+```text
+IDSS Project - Copy/
+├── app.py
+├── README.md
+├── requirements.txt
+├── best_credit_risk_model.joblib
+├── model_features.joblib
+├── Dataset/
+│   └── X_test_phase3.csv
+├── images/
+│   ├── active_decision_engine.png
+│   ├── ai_explanation.png
+│   ├── demographic_heatmap.png
+│   ├── dynamic_funnel.png
+│   ├── global_shap_summary.png
+│   ├── leakage_analysis.png
+│   ├── portfolio_overview.png
+│   ├── profit_optimization.png
+│   ├── recommendation_output.png
+│   ├── risk_vs_return.png
+│   └── shap_waterfall.png
+```
+
+---
+
+## 11. How to Run the Project
+
+### 1. Activate your environment
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+& ".venv\Scripts\Activate.ps1"
+```
+
+### 2. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Add your Gemini API key
+
+Create a `.streamlit/secrets.toml` file or set an environment variable:
+
+```toml
+GOOGLE_API_KEY = "your-api-key-here"
+```
+
+### 4. Start the app
+
+```bash
+streamlit run app.py
+```
+
+### 5. Open the dashboard
+
+Use the sidebar to switch between:
+- Active Decision Engine
+- Portfolio Insights
+
+---
+
+## 12. Notes and Design Decisions
+
+- The UI was built to feel like a banking product, not a generic data science demo.
+- The static loan-grade rule was removed from the recommendation flow because it is not a user-input feature.
+- The SHAP visual was upgraded from a static image to an interactive dashboard component.
+- The recommendation and explanation layers are now API-backed so the app can express the model outcome in business language.
+- The portfolio dashboard is deliberately designed for decision-makers who need to evaluate exposure, profitability, and policy impact quickly.
+
+---
+
+## 13. Expected Outcome
+
+This IDSS helps the banking system do three things better:
+
+- approve better loans,
+- reject risk more consistently,
+- and explain decisions in a way both business users and regulators can understand.
+
+That makes it useful not only as a model demo, but as a practical decision support layer for real lending operations.
