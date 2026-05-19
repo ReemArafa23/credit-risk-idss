@@ -357,7 +357,7 @@ if page == "Active Decision Engine":
                 st.warning("RECOMMENDATION: Short credit history driving risk. Require secondary credit references (e.g., utility bills).")
             if 'emp_length' in top_driver:
                 st.warning("RECOMMENDATION: Short or unstable employment history flagged. Require most recent pay stubs and employer verification.")
-            if:
+            if not any(kw in top_driver for kw in ['loan_to_income', 'percent_income', 'int_rate', 'person_income', 'home_ownership', 'cred_hist_length', 'emp_length']):
                 st.error(f"RECOMMENDATION: Elevated risk stemming from `{top_2_drivers[0][0]}`. Escalate to human underwriter for manual review.")
 
         # 4. Visual Explainability (Local SHAP)
