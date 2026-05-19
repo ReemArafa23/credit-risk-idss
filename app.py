@@ -42,15 +42,22 @@ def show_portfolio_insights():
 
     # 2. Approval Threshold Simulator
     st.markdown("### 🛠 Policy Simulator: Risk vs. Revenue")
-    threshold = st.slider("Acceptable Default Risk Limit (%)", 0.0, 100.0, 50.0) / 100
+    
+    # 1. Calculate probabilities FIRST
     df['prob_default'] = model.predict_proba(df[features])[:, 1]
     
+    # 2. THEN create the 'Approved' column based on the slider
+    threshold = st.slider("Acceptable Default Risk Limit (%)", 0.0, 100.0, 50.0) / 100
+    df['Approved'] = df['prob_default'] < threshold
+    
+    # 3. NOW you can safely use df['Approved']
     col1, col2 = st.columns(2)
     with col1:
         st.write(f"Loans Approved: {len(df[df['Approved']])}")
         st.bar_chart(df['Approved'].value_counts())
     with col2:
         st.write("Revenue Impact of Policy Change")
+        # Ensure 'loan_amnt' exists in your CSV, otherwise use the column name from your features
         st.metric("Total Loan Volume ($)", f"${df[df['Approved']]['loan_amnt'].sum():,.0f}")
 
     # 3. Risk-Return Matrix
