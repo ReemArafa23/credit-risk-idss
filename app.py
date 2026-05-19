@@ -21,7 +21,18 @@ def load_model_and_features():
 model, features = load_model_and_features()
 
 st.title("🏦 Intelligent Decision Support System (IDSS)")
-st.markdown("### Phase 5: Active Decision Engine Prototype")
+st.caption("Applicant scoring, recommendations, and explainable AI")
+
+with st.sidebar.expander("Gemini API Key", expanded=False):
+    api_key_input = st.text_input(
+        "Enter your Google Gemini API key",
+        value=st.session_state.get("GOOGLE_API_KEY", ""),
+        type="password",
+        help="Used only for AI recommendation and explanation generation.",
+    )
+    if api_key_input:
+        st.session_state["GOOGLE_API_KEY"] = api_key_input
+        st.success("API key loaded")
 
 def show_portfolio_insights():
     st.header("📈 Portfolio Insights & Strategic Dashboard")
@@ -382,7 +393,7 @@ def display_ai_recommendation(customer_data, prediction_prob, risk_tier, top_fea
 
                 api_key = _get_google_api_key()
                 if not api_key:
-                    st.error("Google API key not found. Add GOOGLE_API_KEY to Streamlit secrets or environment variables.")
+                    st.info("Add your Gemini API key in the sidebar to enable AI-generated recommendations.")
                     return
 
                 prompt = _build_recommendation_prompt(customer_data, prediction_prob, risk_tier, top_features, target_definition)
@@ -430,7 +441,7 @@ def display_xai_explanation(customer_data, prediction_prob, risk_tier, top_featu
                 api_key = _get_google_api_key()
 
                 if not api_key:
-                    st.error("Google API key not found. Add GOOGLE_API_KEY to Streamlit secrets or environment variables.")
+                    st.info("Add your Gemini API key in the sidebar to enable AI-generated explanations.")
                     return
 
                 prompt = _build_xai_prompt(customer_data, prediction_prob, risk_tier, top_features, target_definition)
@@ -458,39 +469,6 @@ def display_xai_explanation(customer_data, prediction_prob, risk_tier, top_featu
             except Exception as exc:
                 st.error(f"Could not generate AI explanation: {exc}")
                 st.info("Fallback: the explanation component is ready, but the Gemini request failed. Check your API key, internet access, and google-genai installation.")
-
-
-def run_xai_demo():
-    st.divider()
-    st.header("Demo: AI Explanation Component")
-    st.caption("This demo uses synthetic churn-style inputs so you can test the UI immediately.")
-
-    demo_customer_data = {
-        "customer_id": "CUST-10421",
-        "age": 38,
-        "monthly_charges": 89.50,
-        "tenure_months": 7,
-        "contract_type": "Month-to-month",
-        "support_calls_last_90d": 6,
-        "payment_method": "Electronic check",
-        "region": "West",
-        "account_balance": 143.22,
-    }
-
-    demo_top_features = [
-        {"feature": "support_calls_last_90d", "value": 6, "impact": "increases risk"},
-        {"feature": "tenure_months", "value": 7, "impact": "increases risk"},
-        {"feature": "monthly_charges", "value": 89.50, "impact": "increases risk"},
-        {"feature": "account_balance", "value": 143.22, "impact": "decreases risk"},
-    ]
-
-    display_xai_explanation(
-        customer_data=demo_customer_data,
-        prediction_prob=0.846,
-        risk_tier="High",
-        top_features=demo_top_features,
-        target_definition="Probability that this customer will churn in the next 30 days",
-    )
 
 
 def build_credit_risk_xai_payload(applicant_df, prediction_prob, feature_contributions):
@@ -658,7 +636,7 @@ if page == "Active Decision Engine":
             tier_color = "#00C04B" # Green
             
         st.markdown("---")
-        st.subheader("1. IDSS Risk Assessment")
+        st.subheader("1. Risk Summary")
         
         col1, col2 = st.columns(2)
         col1.metric(label="Probability of Default", value=f"{prob_default:.2%}")
@@ -682,7 +660,7 @@ if page == "Active Decision Engine":
         top_mitigator = mitigating_drivers[0] if len(mitigating_drivers) > 0 and mitigating_drivers[0][1] < 0 else None
 
         st.markdown("---")
-        st.subheader("2. Automated Business Recommendation")
+        st.subheader("2. Recommendation")
         recommendation_customer_data, recommendation_top_features = build_credit_risk_xai_payload(applicant_df, prob_default, feature_contributions)
         display_ai_recommendation(
             customer_data=recommendation_customer_data,
@@ -694,7 +672,7 @@ if page == "Active Decision Engine":
 
         # 4. Visual Explainability (Interactive SHAP)
         st.markdown("---")
-        st.subheader("3. Why was this decision made?")
+        st.subheader("3. Why this result?")
         st.markdown("""
         Our AI analyzed this application and calculated a **Probability of Default**. The interactive waterfall below shows how the model moved from its baseline view to this specific decision.
         """)
@@ -747,8 +725,8 @@ if page == "Active Decision Engine":
             )
 
         st.divider()
-        st.subheader("4. AI Business Explanation")
-        st.caption("This explanation is based on the applicant’s actual assessed values and the strongest positive/negative SHAP drivers.")
+        st.subheader("4. Plain-English explanation")
+        st.caption("Based on the applicant’s actual values and the strongest SHAP drivers.")
         real_customer_data, real_top_features = build_credit_risk_xai_payload(applicant_df, prob_default, feature_contributions)
         display_xai_explanation(
             customer_data=real_customer_data,
@@ -760,9 +738,3 @@ if page == "Active Decision Engine":
 
 else:
     show_portfolio_insights()
-
-if page == "Active Decision Engine":
-    st.divider()
-    st.subheader("Independent XAI Demo")
-    st.caption("Use this section to test the Gemini-powered explanation component without running a loan assessment first.")
-    run_xai_demo()
