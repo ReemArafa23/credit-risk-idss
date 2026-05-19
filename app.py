@@ -347,17 +347,17 @@ if page == "Active Decision Engine":
             
             if 'loan_to_income' in top_driver or 'percent_income' in top_driver:
                 st.error("RECOMMENDATION: Counter-offer with a lower principal loan amount to bring the LTI ratio under 35%.")
-            if 'int_rate' in top_driver:
+            elif 'int_rate' in top_driver:
                 st.warning("RECOMMENDATION: Reject current unsecured terms, but offer a secured loan option to lower the interest burden.")
-            if 'person_income' in top_driver:
+            elif 'person_income' in top_driver:
                 st.error("RECOMMENDATION: Income is flagged as insufficient for this loan structure. Request proof of additional income or a co-signer.")
-            if 'home_ownership' in top_driver:
+            elif 'home_ownership' in top_driver:
                 st.warning("RECOMMENDATION: Housing instability flagged. Require a larger down payment or collateral to mitigate flight risk.")
-            if 'cred_hist_length' in top_driver:
+            elif 'cred_hist_length' in top_driver:
                 st.warning("RECOMMENDATION: Short credit history driving risk. Require secondary credit references (e.g., utility bills).")
-            if 'emp_length' in top_driver:
+            elif 'emp_length' in top_driver:
                 st.warning("RECOMMENDATION: Short or unstable employment history flagged. Require most recent pay stubs and employer verification.")
-            if not any(kw in top_driver for kw in ['loan_to_income', 'percent_income', 'int_rate', 'person_income', 'home_ownership', 'cred_hist_length', 'emp_length']):
+            else:
                 st.error(f"RECOMMENDATION: Elevated risk stemming from `{top_2_drivers[0][0]}`. Escalate to human underwriter for manual review.")
 
         # 4. Visual Explainability (Local SHAP)
