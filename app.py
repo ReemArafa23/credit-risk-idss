@@ -29,7 +29,7 @@ def show_portfolio_insights():
     st.markdown("This view monitors the overall risk distribution of our current applicant pool.")
     
     # 1. Load your test data (X_test_phase3.csv)
-    df = pd.read_csv('X_test_phase3.csv')
+    df = pd.read_csv('Dataset/X_test_phase3.csv')
     
     # 2. Risk Distribution Chart
     st.markdown("### Risk Segment Distribution")
