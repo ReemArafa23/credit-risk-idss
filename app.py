@@ -339,9 +339,7 @@ if page == "Active Decision Engine":
         st.markdown("---")
         st.subheader("2. Automated Business Recommendation")
         
-        # Static baseline warning for loan_grade
-        st.info("ℹ️ **Note on Baseline Risk:** Applicant loan grade (A-G) is not requested during this rapid assessment. A baseline grade has been automatically applied to the mathematical risk assessment, which adds a constant systemic risk factor to all profiles.")
-
+       
         if len(top_2_drivers) == 0:
             st.success("PROCEED: No significant dynamic risk drivers identified. Approve under standard protocol.")
         else:
@@ -349,17 +347,17 @@ if page == "Active Decision Engine":
             
             if 'loan_to_income' in top_driver or 'percent_income' in top_driver:
                 st.error("RECOMMENDATION: Counter-offer with a lower principal loan amount to bring the LTI ratio under 35%.")
-            elif 'int_rate' in top_driver:
+            if 'int_rate' in top_driver:
                 st.warning("RECOMMENDATION: Reject current unsecured terms, but offer a secured loan option to lower the interest burden.")
-            elif 'person_income' in top_driver:
+            if 'person_income' in top_driver:
                 st.error("RECOMMENDATION: Income is flagged as insufficient for this loan structure. Request proof of additional income or a co-signer.")
-            elif 'home_ownership' in top_driver:
+            if 'home_ownership' in top_driver:
                 st.warning("RECOMMENDATION: Housing instability flagged. Require a larger down payment or collateral to mitigate flight risk.")
-            elif 'cred_hist_length' in top_driver:
+            if 'cred_hist_length' in top_driver:
                 st.warning("RECOMMENDATION: Short credit history driving risk. Require secondary credit references (e.g., utility bills).")
-            elif 'emp_length' in top_driver:
+            if 'emp_length' in top_driver:
                 st.warning("RECOMMENDATION: Short or unstable employment history flagged. Require most recent pay stubs and employer verification.")
-            else:
+            if:
                 st.error(f"RECOMMENDATION: Elevated risk stemming from `{top_2_drivers[0][0]}`. Escalate to human underwriter for manual review.")
 
         # 4. Visual Explainability (Local SHAP)
