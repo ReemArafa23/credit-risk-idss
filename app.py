@@ -373,6 +373,83 @@ def _render_summary_strip(prediction_prob, risk_tier, top_features):
     s3.metric("Top Driver", top_feature_name)
 
 
+def _local_recommendation_text(prediction_prob, risk_tier, top_features):
+    top_feature_name = "N/A"
+    top_feature_impact = ""
+    if top_features:
+        first = top_features[0]
+        if isinstance(first, dict):
+            top_feature_name = first.get("feature", first.get("name", "N/A"))
+            top_feature_impact = first.get("impact", "")
+        elif isinstance(first, (list, tuple)):
+            top_feature_name = first[0] if len(first) > 0 else "N/A"
+            top_feature_impact = str(first[2]) if len(first) > 2 else ""
+        else:
+            top_feature_name = str(first)
+
+    if prediction_prob >= 0.7:
+        decision = "High risk. Do not auto-approve without human review."
+        actions = [
+            "Escalate to an underwriter for manual review.",
+            "Request additional proof of income or repayment capacity.",
+            "Consider a smaller loan amount or stricter terms.",
+        ]
+    elif prediction_prob >= 0.3:
+        decision = "Medium risk. Review the case carefully before approval."
+        actions = [
+            "Check the strongest risk driver in detail.",
+            "Consider a reduced loan amount or adjusted pricing.",
+            "Request supporting documents if the profile is borderline.",
+        ]
+    else:
+        decision = "Low risk. The applicant appears relatively stable."
+        actions = [
+            "Proceed with standard approval checks.",
+            "Offer normal terms if policy rules are met.",
+            "Monitor the account using the bank's standard controls.",
+        ]
+
+    return (
+        f"### Risk Interpretation\n"
+        f"This applicant is classified as **{risk_tier} Risk** with a probability of **{prediction_prob:.2%}**. {decision}\n\n"
+        f"### Recommendation\n"
+        f"The strongest driver is **{top_feature_name}**{f' ({top_feature_impact})' if top_feature_impact else ''}. Use that signal as the main review point.\n\n"
+        f"### Actions\n"
+        f"1. {actions[0]}\n"
+        f"2. {actions[1]}\n"
+        f"3. {actions[2]}"
+    )
+
+
+def _local_explanation_text(customer_data, prediction_prob, risk_tier, top_features):
+    summary_items = list(customer_data.items())[:3]
+    profile_lines = "; ".join(f"{k}={_format_value_for_prompt(v)}" for k, v in summary_items)
+
+    risk_lines = []
+    for feature in top_features[:3]:
+        if isinstance(feature, dict):
+            risk_lines.append(f"{feature.get('feature', 'feature')} -> {feature.get('impact', 'no impact provided')}")
+        elif isinstance(feature, (list, tuple)) and len(feature) >= 3:
+            risk_lines.append(f"{feature[0]} -> {feature[2]}")
+        else:
+            risk_lines.append(str(feature))
+
+    risk_text = "; ".join(risk_lines) if risk_lines else "No strong drivers were supplied."
+
+    return (
+        f"### Why This Score\n"
+        f"This applicant received a **{risk_tier} Risk** score of **{prediction_prob:.2%}** because the profile shows {profile_lines}.\n\n"
+        f"### Key Risk Drivers\n"
+        f"The main model signals are: {risk_text}. These drivers matter because they move the model toward higher or lower repayment risk.\n\n"
+        f"### Business Impact\n"
+        f"At this score level, the business should treat the case as a {risk_tier.lower()}-priority decision and apply the right approval controls.\n\n"
+        f"### Recommended Actions\n"
+        f"1. Review the strongest driver before final approval.\n"
+        f"2. Apply the appropriate policy treatment for this risk tier.\n"
+        f"3. Use the case to guide pricing, limit, or review decisions."
+    )
+
+
 def display_ai_recommendation(customer_data, prediction_prob, risk_tier, top_features, target_definition="Customer churn / credit default event"):
     st.subheader("🧭 AI Recommendation")
     _render_summary_strip(prediction_prob, risk_tier, top_features)
@@ -395,18 +472,18 @@ def display_ai_recommendation(customer_data, prediction_prob, risk_tier, top_fea
 
                 api_key = _get_google_api_key()
                 if not api_key:
-                    st.info("Add your Gemini API key in the sidebar to enable AI-generated recommendations.")
-                    return
+                    answer = _local_recommendation_text(prediction_prob, risk_tier, top_features)
+                    st.session_state[state_key] = answer
+                else:
+                    prompt = _build_recommendation_prompt(customer_data, prediction_prob, risk_tier, top_features, target_definition)
+                    client = genai.Client(api_key=api_key)
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=prompt,
+                    )
 
-                prompt = _build_recommendation_prompt(customer_data, prediction_prob, risk_tier, top_features, target_definition)
-                client = genai.Client(api_key=api_key)
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=prompt,
-                )
-
-                answer = getattr(response, "text", None) or str(response)
-                st.session_state[state_key] = answer
+                    answer = getattr(response, "text", None) or str(response)
+                    st.session_state[state_key] = answer
 
                 st.markdown("### Recommendation Output")
                 st.markdown(
@@ -419,8 +496,9 @@ def display_ai_recommendation(customer_data, prediction_prob, risk_tier, top_fea
                 )
 
             except Exception as exc:
-                st.error(f"Could not generate AI recommendation: {exc}")
-                st.info("Fallback: the recommendation component is ready, but the Gemini request failed. Check your API key, internet access, and google-genai installation.")
+                answer = _local_recommendation_text(prediction_prob, risk_tier, top_features)
+                st.session_state[state_key] = answer
+                st.warning(f"Gemini recommendation failed, so a local fallback was used: {exc}")
 
     if state_key in st.session_state:
         st.markdown("### Recommendation Output")
@@ -458,19 +536,19 @@ def display_xai_explanation(customer_data, prediction_prob, risk_tier, top_featu
                 api_key = _get_google_api_key()
 
                 if not api_key:
-                    st.info("Add your Gemini API key in the sidebar to enable AI-generated explanations.")
-                    return
+                    answer = _local_explanation_text(customer_data, prediction_prob, risk_tier, top_features)
+                    st.session_state[state_key] = answer
+                else:
+                    prompt = _build_xai_prompt(customer_data, prediction_prob, risk_tier, top_features, target_definition)
 
-                prompt = _build_xai_prompt(customer_data, prediction_prob, risk_tier, top_features, target_definition)
+                    client = genai.Client(api_key=api_key)
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=prompt,
+                    )
 
-                client = genai.Client(api_key=api_key)
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=prompt,
-                )
-
-                answer = getattr(response, "text", None) or str(response)
-                st.session_state[state_key] = answer
+                    answer = getattr(response, "text", None) or str(response)
+                    st.session_state[state_key] = answer
 
                 st.markdown("### AI Explanation")
                 st.markdown(
@@ -484,8 +562,9 @@ def display_xai_explanation(customer_data, prediction_prob, risk_tier, top_featu
                 st.info("The response above is constrained to the provided customer profile, prediction score, and top model drivers.")
 
             except Exception as exc:
-                st.error(f"Could not generate AI explanation: {exc}")
-                st.info("Fallback: the explanation component is ready, but the Gemini request failed. Check your API key, internet access, and google-genai installation.")
+                answer = _local_explanation_text(customer_data, prediction_prob, risk_tier, top_features)
+                st.session_state[state_key] = answer
+                st.warning(f"Gemini explanation failed, so a local fallback was used: {exc}")
 
     if state_key in st.session_state:
         st.markdown("### AI Explanation")
