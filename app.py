@@ -4,6 +4,7 @@ import numpy as np
 import joblib
 import shap
 import matplotlib.pyplot as plt
+import json
 
 # Streamlit Page Config
 st.set_page_config(page_title="IDSS Active Decision Engine", layout="wide")
@@ -22,17 +23,49 @@ st.markdown("### Phase 5: Active Decision Engine Prototype")
 
 # Sidebar - Applicant Details
 st.sidebar.header("Applicant Details")
-age = st.sidebar.slider("Age", 18, 100, 30)
-income = st.sidebar.number_input("Annual Income ($)", min_value=0, value=60000, step=1000)
-emp_length = st.sidebar.slider("Employment Length (Years)", 0, 50, 5)
-loan_amnt = st.sidebar.number_input("Loan Amount ($)", min_value=0, value=15000, step=500)
-int_rate = st.sidebar.slider("Interest Rate (%)", 1.0, 25.0, 10.5)
-cred_hist_length = st.sidebar.slider("Credit History Length (Years)", 0, 30, 4)
+input_mode = st.sidebar.radio("Input Method", ["Manual Entry", "Upload JSON"])
 
-home_ownership = st.sidebar.selectbox("Home Ownership", ["RENT", "OWN", "MORTGAGE", "OTHER"])
-prior_default = st.sidebar.selectbox("Prior Default on File", ["No", "Yes"])
+if input_mode == "Manual Entry":
+    age = st.sidebar.slider("Age", 18, 100, 30)
+    income = st.sidebar.number_input("Annual Income ($)", min_value=0, value=60000, step=1000)
+    emp_length = st.sidebar.slider("Employment Length (Years)", 0, 50, 5)
+    loan_amnt = st.sidebar.number_input("Loan Amount ($)", min_value=0, value=15000, step=500)
+    int_rate = st.sidebar.slider("Interest Rate (%)", 1.0, 25.0, 10.5)
+    cred_hist_length = st.sidebar.slider("Credit History Length (Years)", 0, 30, 4)
+    home_ownership = st.sidebar.selectbox("Home Ownership", ["RENT", "OWN", "MORTGAGE", "OTHER"])
+    prior_default = st.sidebar.selectbox("Prior Default on File", ["No", "Yes"])
+    ready_to_assess = st.sidebar.button("Assess Risk", type="primary")
+else:
+    uploaded_file = st.sidebar.file_uploader("Upload Applicant JSON (.json)", type=["json"])
+    if uploaded_file is not None:
+        try:
+            record = json.load(uploaded_file)
+            age = record.get("person_age", 30)
+            income = record.get("person_income", 60000)
+            emp_length = record.get("person_emp_length", 5)
+            loan_amnt = record.get("loan_amnt", 15000)
+            int_rate = record.get("loan_int_rate", 10.5)
+            cred_hist_length = record.get("cb_person_cred_hist_length", 4)
+            
+            # Helper to match home ownership strings roughly
+            ho_val = record.get("home_ownership", "RENT").upper()
+            if ho_val not in ["RENT", "OWN", "MORTGAGE", "OTHER"]: ho_val = "RENT"
+            home_ownership = ho_val
+            
+            prior_default = record.get("prior_default", "No")
+            
+            st.sidebar.success("JSON loaded successfully! Click Assess Risk.")
+            ready_to_assess = st.sidebar.button("Assess Risk", type="primary")
+        except Exception as e:
+            st.sidebar.error(f"Error parsing JSON: {e}")
+            ready_to_assess = False
+    else:
+        st.sidebar.info("Please upload a .json file to continue.")
+        st.sidebar.markdown("**Example JSON format:**")
+        st.sidebar.code('{\n  "person_age": 25,\n  "person_income": 40000,\n  "person_emp_length": 2,\n  "loan_amnt": 14000,\n  "loan_int_rate": 14.5,\n  "cb_person_cred_hist_length": 3,\n  "home_ownership": "RENT",\n  "prior_default": "Yes"\n}', language='json')
+        ready_to_assess = False
 
-if st.sidebar.button("Assess Risk", type="primary"):
+if ready_to_assess:
     
     # 2. Dynamic Feature Engineering
     loan_to_income_ratio = loan_amnt / income if income > 0 else 0
@@ -91,6 +124,10 @@ if st.sidebar.button("Assess Risk", type="primary"):
     sorted_drivers = sorted(feature_contributions.items(), key=lambda x: x[1], reverse=True)
     top_2_drivers = [item for item in sorted_drivers if item[1] > 0][:2]
     
+    # Find top mitigating driver (most negative SHAP value)
+    mitigating_drivers = sorted(feature_contributions.items(), key=lambda x: x[1])
+    top_mitigator = mitigating_drivers[0] if len(mitigating_drivers) > 0 and mitigating_drivers[0][1] < 0 else None
+
     st.markdown("---")
     st.subheader("2. Automated Business Recommendation")
     
@@ -119,7 +156,19 @@ if st.sidebar.button("Assess Risk", type="primary"):
     # 4. Visual Explainability (Local SHAP)
     st.markdown("---")
     st.subheader("3. Audit Trail: SHAP Local Explainability")
-    st.markdown("The waterfall plot below provides mathematical proof of the ML features driving this exact decision.")
+    
+    st.markdown("#### How to Interpret this Graph:")
+    st.markdown("> **The Waterfall Plot unpacks the mathematical logic driving this specific applicant's score.**")
+    st.markdown("> * The baseline at the bottom ($E[f(X)]$) is the exact average model output before considering the applicant's unique details.")
+    st.markdown("> * Each horizontal bar represents one of the applicant's characteristics.")
+    st.markdown("> * 🔴 **Red Bars** push the applicant's risk of default **UP**.")
+    st.markdown("> * 🔵 **Blue Bars** push the applicant's risk of default **DOWN** (mitigating risk).")
+    
+    st.markdown("##### Applicant Breakdown:")
+    if len(top_2_drivers) > 0:
+        st.markdown(f"* **Primary Risk Factor (Red):** The driver adding the most risk here is `{top_2_drivers[0][0]}` (adding **+{top_2_drivers[0][1]:.2f}** to their risk score).")
+    if top_mitigator:
+        st.markdown(f"* **Primary Mitigating Factor (Blue):** The driver saving them the most risk is `{top_mitigator[0]}` (subtracting **{top_mitigator[1]:.2f}** from their risk score).")
     
     fig, ax = plt.subplots(figsize=(10, 5))
     shap.plots.waterfall(local_shap_vals[0], show=False)
