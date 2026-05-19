@@ -373,6 +373,63 @@ def _render_summary_strip(prediction_prob, risk_tier, top_features):
     s3.metric("Top Driver", top_feature_name)
 
 
+def _build_ai_state_key(prefix, customer_data, prediction_prob, risk_tier, top_features, target_definition):
+    payload = {
+        "customer_data": customer_data,
+        "prediction_prob": round(float(prediction_prob), 6),
+        "risk_tier": risk_tier,
+        "top_features": top_features,
+        "target_definition": target_definition,
+    }
+    return f"{prefix}_{abs(hash(json.dumps(payload, sort_keys=True, default=str)))}"
+
+
+def _generate_ai_text(mode, customer_data, prediction_prob, risk_tier, top_features, target_definition):
+    api_key = _get_google_api_key()
+
+    if not api_key:
+        return (
+            _local_recommendation_text(prediction_prob, risk_tier, top_features)
+            if mode == "recommendation"
+            else _local_explanation_text(customer_data, prediction_prob, risk_tier, top_features)
+        )
+
+    try:
+        from google import genai
+
+        prompt = (
+            _build_recommendation_prompt(customer_data, prediction_prob, risk_tier, top_features, target_definition)
+            if mode == "recommendation"
+            else _build_xai_prompt(customer_data, prediction_prob, risk_tier, top_features, target_definition)
+        )
+
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
+
+        return getattr(response, "text", None) or str(response)
+    except Exception:
+        return (
+            _local_recommendation_text(prediction_prob, risk_tier, top_features)
+            if mode == "recommendation"
+            else _local_explanation_text(customer_data, prediction_prob, risk_tier, top_features)
+        )
+
+
+def _render_ai_output(title, text):
+    st.markdown(f"### {title}")
+    st.markdown(
+        f"""
+        <div style="padding: 1rem 1.1rem; border-radius: 0.8rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+        {text.replace(chr(10), '<br>')}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _local_recommendation_text(prediction_prob, risk_tier, top_features):
     top_feature_name = "N/A"
     top_feature_impact = ""
@@ -454,8 +511,7 @@ def display_ai_recommendation(customer_data, prediction_prob, risk_tier, top_fea
     st.subheader("🧭 AI Recommendation")
     _render_summary_strip(prediction_prob, risk_tier, top_features)
 
-    state_key = f"ai_recommendation_{target_definition}"
-    button_key = f"generate_ai_recommendation_{target_definition}"
+    state_key = _build_ai_state_key("ai_recommendation", customer_data, prediction_prob, risk_tier, top_features, target_definition)
 
     with st.expander("Show recommendation inputs", expanded=False):
         st.json({
@@ -465,51 +521,13 @@ def display_ai_recommendation(customer_data, prediction_prob, risk_tier, top_fea
             "top_features": top_features,
         })
 
-    if st.button("✨ Generate AI Recommendation", key=button_key):
-        with st.spinner("Analysing prediction and generating business recommendation..."):
-            try:
-                from google import genai
-
-                api_key = _get_google_api_key()
-                if not api_key:
-                    answer = _local_recommendation_text(prediction_prob, risk_tier, top_features)
-                    st.session_state[state_key] = answer
-                else:
-                    prompt = _build_recommendation_prompt(customer_data, prediction_prob, risk_tier, top_features, target_definition)
-                    client = genai.Client(api_key=api_key)
-                    response = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=prompt,
-                    )
-
-                    answer = getattr(response, "text", None) or str(response)
-                    st.session_state[state_key] = answer
-
-                st.markdown("### Recommendation Output")
-                st.markdown(
-                    f"""
-                    <div style="padding: 1rem 1.1rem; border-radius: 0.8rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
-                    {answer.replace(chr(10), '<br>')}
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-            except Exception as exc:
-                answer = _local_recommendation_text(prediction_prob, risk_tier, top_features)
-                st.session_state[state_key] = answer
-                st.warning(f"Gemini recommendation failed, so a local fallback was used: {exc}")
-
     if state_key in st.session_state:
-        st.markdown("### Recommendation Output")
-        st.markdown(
-            f"""
-            <div style="padding: 1rem 1.1rem; border-radius: 0.8rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
-            {st.session_state[state_key].replace(chr(10), '<br>')}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        _render_ai_output("Recommendation Output", st.session_state[state_key])
+    else:
+        with st.spinner("Generating recommendation..."):
+            answer = _generate_ai_text("recommendation", customer_data, prediction_prob, risk_tier, top_features, target_definition)
+            st.session_state[state_key] = answer
+        _render_ai_output("Recommendation Output", st.session_state[state_key])
 
 
 def display_xai_explanation(customer_data, prediction_prob, risk_tier, top_features, target_definition="Customer churn / credit default event"):
@@ -517,8 +535,7 @@ def display_xai_explanation(customer_data, prediction_prob, risk_tier, top_featu
 
     _render_summary_strip(prediction_prob, risk_tier, top_features)
 
-    state_key = f"ai_explanation_{target_definition}"
-    button_key = f"generate_xai_explanation_{target_definition}"
+    state_key = _build_ai_state_key("ai_explanation", customer_data, prediction_prob, risk_tier, top_features, target_definition)
 
     with st.expander("Show input data", expanded=False):
         st.json({
@@ -528,54 +545,15 @@ def display_xai_explanation(customer_data, prediction_prob, risk_tier, top_featu
             "top_features": top_features,
         })
 
-    if st.button("✨ Generate AI Explanation", key=button_key):
-        with st.spinner("Analysing prediction and generating business insights..."):
-            try:
-                from google import genai
-
-                api_key = _get_google_api_key()
-
-                if not api_key:
-                    answer = _local_explanation_text(customer_data, prediction_prob, risk_tier, top_features)
-                    st.session_state[state_key] = answer
-                else:
-                    prompt = _build_xai_prompt(customer_data, prediction_prob, risk_tier, top_features, target_definition)
-
-                    client = genai.Client(api_key=api_key)
-                    response = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=prompt,
-                    )
-
-                    answer = getattr(response, "text", None) or str(response)
-                    st.session_state[state_key] = answer
-
-                st.markdown("### AI Explanation")
-                st.markdown(
-                    f"""
-                    <div style="padding: 1rem 1.1rem; border-radius: 0.8rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
-                    {answer.replace(chr(10), '<br>')}
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                st.info("The response above is constrained to the provided customer profile, prediction score, and top model drivers.")
-
-            except Exception as exc:
-                answer = _local_explanation_text(customer_data, prediction_prob, risk_tier, top_features)
-                st.session_state[state_key] = answer
-                st.warning(f"Gemini explanation failed, so a local fallback was used: {exc}")
-
     if state_key in st.session_state:
-        st.markdown("### AI Explanation")
-        st.markdown(
-            f"""
-            <div style="padding: 1rem 1.1rem; border-radius: 0.8rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
-            {st.session_state[state_key].replace(chr(10), '<br>')}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        _render_ai_output("AI Explanation", st.session_state[state_key])
+        st.info("The response above is constrained to the provided customer profile, prediction score, and top model drivers.")
+    else:
+        with st.spinner("Generating explanation..."):
+            answer = _generate_ai_text("explanation", customer_data, prediction_prob, risk_tier, top_features, target_definition)
+            st.session_state[state_key] = answer
+        _render_ai_output("AI Explanation", st.session_state[state_key])
+        st.info("The response above is constrained to the provided customer profile, prediction score, and top model drivers.")
 
 
 def build_credit_risk_xai_payload(applicant_df, prediction_prob, feature_contributions):
