@@ -324,18 +324,26 @@ if page == "Active Decision Engine":
         local_shap_vals = local_explainer(applicant_df)
         
         feature_contributions = dict(zip(features, local_shap_vals.values[0]))
-        sorted_drivers = sorted(feature_contributions.items(), key=lambda x: x[1], reverse=True)
+        
+        # Filter out 'loan_grade' from the dynamic recommendation logic
+        # because the user doesn't input it, so we don't want it to constantly trigger.
+        filtered_contributions = {k: v for k, v in feature_contributions.items() if 'grade' not in k.lower()}
+        
+        sorted_drivers = sorted(filtered_contributions.items(), key=lambda x: x[1], reverse=True)
         top_2_drivers = [item for item in sorted_drivers if item[1] > 0][:2]
         
         # Find top mitigating driver (most negative SHAP value)
-        mitigating_drivers = sorted(feature_contributions.items(), key=lambda x: x[1])
+        mitigating_drivers = sorted(filtered_contributions.items(), key=lambda x: x[1])
         top_mitigator = mitigating_drivers[0] if len(mitigating_drivers) > 0 and mitigating_drivers[0][1] < 0 else None
 
         st.markdown("---")
         st.subheader("2. Automated Business Recommendation")
         
+        # Static baseline warning for loan_grade
+        st.info("ℹ️ **Note on Baseline Risk:** Applicant loan grade (A-G) is not requested during this rapid assessment. A baseline grade has been automatically applied to the mathematical risk assessment, which adds a constant systemic risk factor to all profiles.")
+
         if len(top_2_drivers) == 0:
-            st.success("PROCEED: No significant risk drivers identified. Approve under standard protocol.")
+            st.success("PROCEED: No significant dynamic risk drivers identified. Approve under standard protocol.")
         else:
             top_driver = top_2_drivers[0][0].lower()
             
@@ -351,8 +359,6 @@ if page == "Active Decision Engine":
                 st.warning("RECOMMENDATION: Short credit history driving risk. Require secondary credit references (e.g., utility bills).")
             elif 'emp_length' in top_driver:
                 st.warning("RECOMMENDATION: Short or unstable employment history flagged. Require most recent pay stubs and employer verification.")
-            elif 'grade' in top_driver:
-                st.warning("RECOMMENDATION: Poor historical loan grade detected. Limit total exposure and require auto-pay enrollment.")
             else:
                 st.error(f"RECOMMENDATION: Elevated risk stemming from `{top_2_drivers[0][0]}`. Escalate to human underwriter for manual review.")
 
