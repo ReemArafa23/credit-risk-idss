@@ -27,7 +27,7 @@ import plotly.graph_objects as go
 def show_portfolio_insights():
     st.header("🏢 Portfolio Strategy & Financial Impact")
     # Make sure you have a 'top_risk_driver' column in your test dataframe
-    df = pd.read_csv('X_test_phase3.csv') 
+    df = pd.read_csv('Dataset/X_test_phase3.csv') 
     
     # 1. Financial KPI Metrics
     st.subheader("Executive Summary: Financial Impact")
