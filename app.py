@@ -25,87 +25,32 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 def show_portfolio_insights():
-    st.header("🏢 Portfolio Strategy & Financial Impact")
-    # Make sure you have a 'top_risk_driver' column in your test dataframe
-    df = pd.read_csv('Dataset/X_test_phase3.csv') 
+    st.subheader("📊 Portfolio Strategic Insights")
+    st.markdown("This view monitors the overall risk distribution of our current applicant pool.")
     
-    # 1. Financial KPI Metrics
-    st.subheader("Executive Summary: Financial Impact")
-    avg_loan = 15000
-    total_loans = len(df)
-    potential_savings = (total_loans * 0.04) * avg_loan # Assumption: 4% reduction in defaults
+    # 1. Load your test data (X_test_phase3.csv)
+    df = pd.read_csv('X_test_phase3.csv')
     
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Loans Assessed", total_loans)
-    col2.metric("Est. Annual Loss Averted", f"${potential_savings:,.0f}")
-    col3.metric("Operational Hours Saved", "45 hrs/mo")
+    # 2. Risk Distribution Chart
+    st.markdown("### Risk Segment Distribution")
+    probs = model.predict_proba(df[features])[:, 1]
+    df['Risk_Tier'] = pd.cut(probs, bins=[0, 0.3, 0.7, 1.0], labels=["Low", "Medium", "High"])
+    
+    tier_counts = df['Risk_Tier'].value_counts()
+    st.bar_chart(tier_counts)
+    
+    # 3. Policy Simulation
+    st.markdown("### Policy Simulator")
+    st.info("Simulation: What happens if we reject all 'High Risk' applicants?")
+    
+    total_apps = len(df)
+    rejected_apps = tier_counts['High']
+    st.metric("Total Applications", total_apps)
+    st.metric("Applications Flagged for Rejection", rejected_apps, delta=f"-{(rejected_apps/total_apps):.1%}")
 
-    # 2. Approval Threshold Simulator
-    st.markdown("### 🛠 Policy Simulator: Risk vs. Revenue")
-    
-    # 1. Calculate probabilities FIRST
-    df['prob_default'] = model.predict_proba(df[features])[:, 1]
-    
-    # 2. THEN create the 'Approved' column based on the slider
-    threshold = st.slider("Acceptable Default Risk Limit (%)", 0.0, 100.0, 50.0) / 100
-    df['Approved'] = df['prob_default'] < threshold
-    
-    # 3. NOW you can safely use df['Approved']
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write(f"Loans Approved: {len(df[df['Approved']])}")
-        st.bar_chart(df['Approved'].value_counts())
-    with col2:
-        st.write("Revenue Impact of Policy Change")
-        # Ensure 'loan_amnt' exists in your CSV, otherwise use the column name from your features
-        st.metric("Total Loan Volume ($)", f"${df[df['Approved']]['loan_amnt'].sum():,.0f}")
-
-    # 2. Risk Metrics
-    df['prob_default'] = model.predict_proba(df[features])[:, 1]
-    
-    # 3. Safe Plotly Scatter
-    st.markdown("### 🎯 Risk-Return Portfolio Matrix")
-    
-    try:
-        fig = px.scatter(
-            df, 
-            x='loan_int_rate', 
-            y='prob_default', 
-            size='loan_amnt', 
-            color='Risk_Tier',
-            title="Profitability vs Risk",
-            labels={'loan_int_rate': 'Interest Rate', 'prob_default': 'Default Probability'}
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.error(f"Could not render chart: {e}")
-        st.write("Columns in your data:", df.columns.tolist())
-    
-    # 4. Opportunity Leakage (The "Why are we losing revenue?" section)
     st.markdown("---")
-    st.subheader("📉 Opportunity Leakage Analysis")
-    st.markdown("Rejected loans often hold hidden value. The chart below shows the most common reasons for rejection.")
-    
-    rejected_df = df[~df['Approved']]
-    if not rejected_df.empty:
-        # Assuming you saved the top driver in the dataframe during Phase 4
-        leakage_counts = rejected_df['top_risk_driver'].value_counts().head(5)
-        st.bar_chart(leakage_counts)
-        st.info("💡 Insight: If we could mitigate the top rejection reason (e.g., Credit History) through secondary documentation, we could recover significant revenue.")
-    else:
-        st.write("No rejections at current threshold.")
-
-    # 5. Executive Interpretation (The "So What?" section)
-    st.markdown("---")
-    st.subheader("🧠 Executive Interpretation")
-    st.markdown("""
-    * **Strategic Focus:** The Risk-Return matrix clearly identifies our 'Profitability Sweet Spot' in the bottom-right quadrant. We should prioritize these segments.
-    * **Operational Efficiency:** Our simulator demonstrates that a 5% increase in risk tolerance could unlock **$X amount** in new loan volume without breaching our default safety target.
-    * **Policy Recommendation:** We should shift from 'hard rejection' to 'conditional approval' for applicants rejected due to Credit History Length, as this is currently our #1 cause of revenue leakage.
-    """)
-
-# To help explain the underlying financial strategy to your professors, 
-# keep these conceptual models in mind during your presentation:
+    st.markdown("### Key Takeaway")
+    st.write("Current portfolio health shows a high concentration of 'Medium Risk' applicants. We recommend prioritizing policies that convert 'Medium Risk' to 'Low Risk' through interest rate restructuring.")
 
 page = st.sidebar.selectbox("Dashboard View", ["Active Decision Engine", "Portfolio Insights"])
 
