@@ -43,7 +43,7 @@ def show_portfolio_insights():
     # 2. Approval Threshold Simulator
     st.markdown("### 🛠 Policy Simulator: Risk vs. Revenue")
     threshold = st.slider("Acceptable Default Risk Limit (%)", 0.0, 100.0, 50.0) / 100
-    df['Approved'] = df['prob_default'] < threshold
+    df['prob_default'] = model.predict_proba(df[features])[:, 1]
     
     col1, col2 = st.columns(2)
     with col1:
